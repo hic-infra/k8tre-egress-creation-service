@@ -15,3 +15,9 @@ class JupyterHubUser(BaseModel):
     token_id: str
     session_id: Optional[str] = None
     scopes: list[str]
+
+class SessionSchema(BaseModel):
+    projectId: str
+    userId: str
+    bucketId: str
+    time: datetime
