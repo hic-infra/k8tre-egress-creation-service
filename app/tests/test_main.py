@@ -9,7 +9,7 @@ import pytest
 from app.main import app, verify_user_token
 from app.config import settings
 from datetime import datetime
-
+from unittest.mock import MagicMock, patch
 from app.schemas import JupyterHubUser
 client = TestClient(app)
 
@@ -29,6 +29,12 @@ def authed_client():
     app.dependency_overrides[verify_user_token] = lambda: JupyterHubUser(**example_user)
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+@pytest.fixture
+def mock_email_send():
+    mock_SMTP = MagicMock(name="send_email.smtplib.SMTP")
+    with patch("smtplib.SMTP_SSL") as mock_SMTP:
+        yield mock_SMTP
 
 @pytest.fixture
 def s3_mock():
@@ -88,7 +94,8 @@ def test_successful_upload(authed_client):
 
     assert response.status_code == 200
 
-def test_successful_egress_request(authed_client):
+def test_successful_egress_request(authed_client, mock_email_send):
+
     response = authed_client.post(
         "/create-egress",
         )
@@ -106,7 +113,6 @@ def test_successful_egress_request(authed_client):
     response = authed_client.post(
         "/request-egress",
         data={"session_id": session_id},
-        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")}
     )
-
+    mock_email_send.assert_called()
     assert response.status_code == 200

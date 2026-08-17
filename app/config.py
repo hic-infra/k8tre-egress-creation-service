@@ -8,7 +8,13 @@ class Settings(BaseSettings):
     s3_bucket_name: str
     jwt_secret_key: str
     jupyterhub_api_url: str
-    jupyterhub_api_token: str
+    smtp_username: str
+    smtp_sender_email: str
+    smtp_password: str
+    smtp_server: str
+    smtp_port: int
+    email_to_notify: str
+    egress_checking_fe_url: str
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="allow"
     )

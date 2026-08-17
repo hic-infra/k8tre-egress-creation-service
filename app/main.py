@@ -1,4 +1,7 @@
+from email.message import EmailMessage
 import hashlib
+import smtplib
+import ssl
 
 from pydantic import TypeAdapter
 
@@ -98,6 +101,21 @@ async def request_egress(session_id: str = Depends(verify_session), token = Depe
         settings.jwt_secret_key,
         algorithm="HS256",
     )
+
+    context = ssl.create_default_context()
+    msg = EmailMessage()
+    msg["to"] = settings.email_to_notify
+    msg["from"] = settings.smtp_sender_email
+    msg["subject"] = f"Egress Request from {token.name}"
+    msg_content = f"An egress has been requested. It can be checked at {settings.egress_checking_fe_url}/{jwt_token}"
+    msg.set_content(msg_content)
+    with smtplib.SMTP_SSL(
+        settings.smtp_server,
+        settings.smtp_port,
+        context=context,
+        ) as server:
+        server.login(settings.smtp_username, settings.smtp_password)
+        server.send_message(msg)
 
     return {"status": "ok", "token": jwt_token}
 
