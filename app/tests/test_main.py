@@ -11,6 +11,7 @@ from app.config import settings
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 from app.schemas import JupyterHubUser
+
 client = TestClient(app)
 
 example_user = {
@@ -23,6 +24,7 @@ example_user = {
     "session_id": "550e8400-e29b-41d4-a716-446655440000",
     "scopes": ["read:notebooks", "access:servers", "read:groups"],
 }
+
 
 @pytest.fixture
 def authed_client():
@@ -41,13 +43,14 @@ def mock_email_send():
 @pytest.fixture
 def mock_s3():
     with mock_aws():
-        # Create bucket
         s3 = boto3.client("s3", region_name=settings.aws_region_name)
         s3.create_bucket(
             Bucket=settings.s3_bucket_name,
             CreateBucketConfiguration={"LocationConstraint": settings.aws_region_name},
         )
-        yield s3
+
+        with patch("app.main.boto3.client", return_value=s3):
+            yield s3
 
 
 def test_create_session(authed_client):
