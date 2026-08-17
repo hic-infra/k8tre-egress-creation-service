@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: psf/black@stable
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create env file
+        run: |
+          touch .env
+          echo aws_endpoint_url=${{ vars.aws_endpoint_url }} >> .env
+          echo aws_access_key_id=${{ secrets.aws_access_key_id }} >> .env
+          echo aws_secret_access_key=${{ secrets.aws_secret_access_key }} >> .env
+          echo aws_region_name=${{ vars.aws_region_name }} >> .env
+          echo s3_bucket_name=${{ vars.s3_bucket_name }} >> .env
+          echo jwt_secret_key=${{ secrets.jwt_secret_key }} >> .env
+          echo JUPYTERHUB_API_URL=${{ vars.JUPYTERHUB_API_URL }} >> .env
+          echo smtp_username=${{ secrets.smtp_username }} >> .env
+          echo smtp_sender_email=${{ vars.smtp_sender_email }} >> .env
+          echo smtp_password=${{ secrets.smtp_password }} >> .env
+          echo smtp_server=${{ secrets.smtp_server }} >> .env
+          echo smtp_port=${{ vars.smtp_port }} >> .env
+          echo email_to_notify=${{ vars.email_to_notify }} >> .env
+          echo egress_checking_fe_url=${{ vars.egress_checking_fe_url }} >> .env
+
+      - name: Run unit tests
+        run: pytest app/tests/ -m "not integration"

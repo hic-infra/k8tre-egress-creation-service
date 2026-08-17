@@ -11,6 +11,7 @@ from app.config import settings
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 from app.schemas import JupyterHubUser
+
 client = TestClient(app)
 
 example_user = {
@@ -21,8 +22,9 @@ example_user = {
     "admin": False,
     "token_id": "abc123def456",
     "session_id": "550e8400-e29b-41d4-a716-446655440000",
-    "scopes": ["read:notebooks", "access:servers", "read:groups"]
+    "scopes": ["read:notebooks", "access:servers", "read:groups"],
 }
+
 
 @pytest.fixture
 def authed_client():
@@ -30,82 +32,86 @@ def authed_client():
     yield TestClient(app)
     app.dependency_overrides.clear()
 
+
 @pytest.fixture
 def mock_email_send():
     mock_SMTP = MagicMock(name="send_email.smtplib.SMTP")
     with patch("smtplib.SMTP_SSL") as mock_SMTP:
         yield mock_SMTP
 
+
 @pytest.fixture
-def s3_mock():
-    """Mock S3"""
+def mock_s3():
     with mock_aws():
-        # Create bucket
-        s3 = boto3.client('s3', region_name='eu-west-2')
+        s3 = boto3.client("s3", region_name=settings.aws_region_name)
         s3.create_bucket(
             Bucket=settings.s3_bucket_name,
-            CreateBucketConfiguration={'LocationConstraint': 'eu-west-2'}
+            CreateBucketConfiguration={"LocationConstraint": settings.aws_region_name},
         )
-        yield s3
+
+        with patch("app.main.boto3.client", return_value=s3):
+            yield s3
+
 
 def test_create_session(authed_client):
     """Test session creation"""
     response = authed_client.post(
-        "/create-egress",
-        headers={"Authorization": "Bearer example"}
-        )
+        "/create-egress", headers={"Authorization": "Bearer example"}
+    )
     assert response.status_code == 200
     res = response.json()
     data = jwt.decode(res["token"], settings.jwt_secret_key, algorithms=["HS256"])
+
 
 def test_upload_invalid_session(authed_client):
     """Test upload with invalid session"""
     response = authed_client.post(
         "/upload-file",
         data={"session_id": "invalid-session-id"},
-        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")}
+        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")},
     )
-    
+
     assert response.status_code == 401
-    assert "Invalid session token" in response.json()['detail']
+    assert "Invalid session token" in response.json()["detail"]
 
 
 def test_upload_no_session(authed_client):
     """Test upload without session_id"""
     response = authed_client.post(
-        "/upload-file",
-        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")}
+        "/upload-file", files={"file": ("test.csv", BytesIO(b"data"), "text/csv")}
     )
-    
+
     assert response.status_code == 422
 
-def test_successful_upload(authed_client):
+
+def test_successful_upload(authed_client, mock_s3):
     response = authed_client.post(
         "/create-egress",
-        )
+    )
     assert response.status_code == 200
     res = response.json()
     session_id = res["token"]
     response = authed_client.post(
         "/upload-file",
         data={"session_id": session_id},
-        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")}
+        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")},
     )
 
     assert response.status_code == 200
 
-def test_successful_egress_request(authed_client, mock_email_send):
+
+def test_successful_egress_request(authed_client, mock_email_send, mock_s3):
 
     response = authed_client.post(
         "/create-egress",
-        )
+    )
     assert response.status_code == 200
     res = response.json()
     session_id = res["token"]
     response = authed_client.post(
         "/upload-file",
         data={"session_id": session_id},
-        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")}
+        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")},
     )
 
     assert response.status_code == 200
