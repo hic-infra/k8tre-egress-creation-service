@@ -7,12 +7,22 @@ from pydantic import TypeAdapter
 
 from app.schemas import JupyterHubUser, SessionSchema
 import httpx
-from fastapi import FastAPI, Depends, APIRouter, File, Form, HTTPException, Header, UploadFile
+from fastapi import (
+    FastAPI,
+    Depends,
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    Header,
+    UploadFile,
+)
 from app.config import settings
 import boto3
 from botocore.client import Config
 import jwt
 from datetime import datetime
+
 
 def get_s3_client():
     return boto3.client(
@@ -24,8 +34,10 @@ def get_s3_client():
         region_name=settings.aws_region_name,
     )
 
+
 app = FastAPI()
 router = APIRouter()
+
 
 async def verify_user_token(authorization: str = Header(...)):
     token = authorization.removeprefix("token ").removeprefix("Bearer ")
@@ -36,36 +48,44 @@ async def verify_user_token(authorization: str = Header(...)):
         )
     return TypeAdapter(JupyterHubUser).validate_json(response.content)
 
+
 async def verify_session(session_id: str = Form(...)):
     """Validate and decode session JWT"""
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id required")
-    
+
     try:
-        payload = jwt.decode(
-            session_id, 
-            settings.jwt_secret_key, 
-            algorithms=["HS256"]
-        )
+        payload = jwt.decode(session_id, settings.jwt_secret_key, algorithms=["HS256"])
         return SessionSchema(**payload)
     except jwt.DecodeError as e:
         raise HTTPException(status_code=401, detail="Invalid session token")
 
+
 @router.post("/create-egress")
-async def create_egress(token = Depends(verify_user_token)):
+async def create_egress(token=Depends(verify_user_token)):
     """
     Creates a session id for a set of egress files to be uploaded
     """
     jwt_token = jwt.encode(
-        {"projectId": "5", "userId": token.name, "bucketId": settings.s3_bucket_name, "time": str(datetime.now())},
+        {
+            "projectId": "5",
+            "userId": token.name,
+            "bucketId": settings.s3_bucket_name,
+            "time": str(datetime.now()),
+        },
         settings.jwt_secret_key,
         algorithm="HS256",
     )
 
-    return {"token" : jwt_token }
+    return {"token": jwt_token}
+
 
 @router.post("/upload-file")
-async def upload_file(file: UploadFile = File(...), session_data = Depends(verify_session), token = Depends(verify_user_token)):
+async def upload_file(
+    file: UploadFile = File(...),
+    session_data=Depends(verify_session),
+    token=Depends(verify_user_token),
+):
     """
     Uploads an invidual file to an S3 bucket for egress
     """
@@ -81,18 +101,21 @@ async def upload_file(file: UploadFile = File(...), session_data = Depends(verif
             ContentType=file.content_type or "application/octet-stream",
             Bucket=settings.s3_bucket_name,
         )
-        
+
         return {
             "uploaded": file.filename,
             "s3_key": s3_key,
         }
-    
+
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail="Upload failed")
 
+
 @router.post("/request-egress")
-async def request_egress(session_id: str = Depends(verify_session), token = Depends(verify_user_token)):
+async def request_egress(
+    session_id: str = Depends(verify_session), token=Depends(verify_user_token)
+):
     """
     Formally requests the egress check
     """
@@ -113,10 +136,11 @@ async def request_egress(session_id: str = Depends(verify_session), token = Depe
         settings.smtp_server,
         settings.smtp_port,
         context=context,
-        ) as server:
+    ) as server:
         server.login(settings.smtp_username, settings.smtp_password)
         server.send_message(msg)
 
     return {"status": "ok", "token": jwt_token}
+
 
 app.include_router(router)
