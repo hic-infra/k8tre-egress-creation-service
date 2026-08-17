@@ -42,10 +42,10 @@ def mock_email_send():
 def mock_s3():
     with mock_aws():
         # Create bucket
-        s3 = boto3.client("s3", region_name="eu-west-2")
+        s3 = boto3.client("s3", region_name=settings.aws_region_name)
         s3.create_bucket(
             Bucket=settings.s3_bucket_name,
-            CreateBucketConfiguration={"LocationConstraint": "eu-west-2"},
+            CreateBucketConfiguration={"LocationConstraint": settings.aws_region_name},
         )
         yield s3
 
