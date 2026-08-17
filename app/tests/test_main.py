@@ -11,7 +11,6 @@ from app.config import settings
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 from app.schemas import JupyterHubUser
-
 client = TestClient(app)
 
 example_user = {
@@ -24,7 +23,6 @@ example_user = {
     "session_id": "550e8400-e29b-41d4-a716-446655440000",
     "scopes": ["read:notebooks", "access:servers", "read:groups"],
 }
-
 
 @pytest.fixture
 def authed_client():
@@ -41,8 +39,7 @@ def mock_email_send():
 
 
 @pytest.fixture
-def s3_mock():
-    """Mock S3"""
+def mock_s3():
     with mock_aws():
         # Create bucket
         s3 = boto3.client("s3", region_name="eu-west-2")
@@ -84,7 +81,7 @@ def test_upload_no_session(authed_client):
     assert response.status_code == 422
 
 
-def test_successful_upload(authed_client):
+def test_successful_upload(authed_client, mock_s3):
     response = authed_client.post(
         "/create-egress",
     )
@@ -100,7 +97,7 @@ def test_successful_upload(authed_client):
     assert response.status_code == 200
 
 
-def test_successful_egress_request(authed_client, mock_email_send):
+def test_successful_egress_request(authed_client, mock_email_send, mock_s3):
 
     response = authed_client.post(
         "/create-egress",
