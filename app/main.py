@@ -99,6 +99,7 @@ async def upload_file(
     file: UploadFile = File(...),
     session_data=Depends(verify_session),
     token=Depends(verify_user_token),
+    s3=Depends(get_s3_client),
 ):
     """
     Uploads an invidual file to an S3 bucket for egress
@@ -107,7 +108,7 @@ async def upload_file(
     # Check if the egress has already been requested
     s3_key = f"{session_data.projectId}/{session_data.time}/done"
 
-    if s3_file_exists(get_s3_client(), s3_key):
+    if s3_file_exists(s3, s3_key):
         raise HTTPException(
             status_code=403, detail="Egress has already been requested!"
         )
@@ -115,8 +116,6 @@ async def upload_file(
     try:
         contents = await file.read()
         s3_key = f"{session_data.projectId}/{session_data.time}/{file.filename}"
-
-        s3 = get_s3_client()
 
         s3.put_object(
             Key=s3_key,
@@ -137,7 +136,9 @@ async def upload_file(
 
 @router.post("/request-egress")
 async def request_egress(
-    session_data=Depends(verify_session), token=Depends(verify_user_token)
+    session_data=Depends(verify_session),
+    token=Depends(verify_user_token),
+    s3=Depends(get_s3_client),
 ):
     """
     Formally requests the egress check
@@ -145,7 +146,6 @@ async def request_egress(
     # Create a file to mark this egress request as done
     s3_key = f"{session_data.projectId}/{session_data.time}/done"
 
-    s3 = get_s3_client()
     s3.put_object(
         Key=s3_key,
         ContentType="application/octet-stream",
