@@ -122,3 +122,35 @@ def test_successful_egress_request(authed_client, mock_email_send, mock_s3):
     )
     mock_email_send.assert_called()
     assert response.status_code == 200
+
+
+def test_accessing_finished_egress_request(authed_client, mock_email_send, mock_s3):
+
+    response = authed_client.post(
+        "/create-egress",
+    )
+    assert response.status_code == 200
+    res = response.json()
+    session_id = res["token"]
+    response = authed_client.post(
+        "/upload-file",
+        data={"session_id": session_id},
+        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")},
+    )
+
+    assert response.status_code == 200
+
+    response = authed_client.post(
+        "/request-egress",
+        data={"session_id": session_id},
+    )
+    mock_email_send.assert_called()
+    assert response.status_code == 200
+
+    response = authed_client.post(
+        "/upload-file",
+        data={"session_id": session_id},
+        files={"file": ("test.csv", BytesIO(b"data"), "text/csv")},
+    )
+
+    assert response.status_code == 403
