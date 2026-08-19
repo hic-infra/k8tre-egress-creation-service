@@ -24,6 +24,11 @@ import jwt
 from datetime import datetime
 
 
+def get_s3_folder(session_data: SessionSchema):
+    time_string = session_data.time.strftime("%y%m%d-%H%M%S")
+    return f"{session_data.projectId}/{time_string}"
+
+
 def get_s3_client():
     return boto3.client(
         "s3",
@@ -104,10 +109,8 @@ async def upload_file(
     """
     Uploads an invidual file to an S3 bucket for egress
     """
-
-    # Check if the egress has already been requested
-    s3_key = f"{session_data.projectId}/{session_data.time}/done"
-
+    s3_folder = get_s3_folder(session_data)
+    s3_key = f"{s3_folder}/done"
     if s3_file_exists(s3, s3_key):
         raise HTTPException(
             status_code=403, detail="Egress has already been requested!"
@@ -115,7 +118,8 @@ async def upload_file(
 
     try:
         contents = await file.read()
-        s3_key = f"{session_data.projectId}/{session_data.time}/{file.filename}"
+        s3_folder = get_s3_folder(session_data)
+        s3_key = f"{s3_folder}/{file.filename}"
 
         s3.put_object(
             Key=s3_key,
@@ -144,10 +148,9 @@ async def request_egress(
     Formally requests the egress check
     """
     # Create a file to mark this egress request as done
-    s3_key = f"{session_data.projectId}/{session_data.time}/done"
-
+    s3_folder = get_s3_folder(session_data)
     s3.put_object(
-        Key=s3_key,
+        Key=f"{s3_folder}/done",
         ContentType="application/octet-stream",
         Bucket=settings.s3_bucket_name,
     )
