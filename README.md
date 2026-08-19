@@ -19,6 +19,10 @@ The workflow is:
     --upload-file
 -request-egress
 
+Once request-egress has been called no more files can be uploaded.
+This is enforced by request-egress creating a .done file in the S3 "folder"
+- upload-file checks for this
+
 ## Setup
 ### Requirements
 This is designed to work with a JupyterHub instance with the k8tre-egress-jupyter
