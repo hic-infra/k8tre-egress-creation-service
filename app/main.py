@@ -29,6 +29,10 @@ def get_s3_folder(session_data: SessionSchema):
     return f"{session_data.projectId}/{time_string}"
 
 
+def get_done_file(s3_folder):
+    return f"{s3_folder}/.done"
+
+
 def get_s3_client():
     return boto3.client(
         "s3",
@@ -110,8 +114,8 @@ async def upload_file(
     Uploads an invidual file to an S3 bucket for egress
     """
     s3_folder = get_s3_folder(session_data)
-    s3_key = f"{s3_folder}/done"
-    if s3_file_exists(s3, s3_key):
+
+    if s3_file_exists(s3, get_done_file(s3_folder)):
         raise HTTPException(
             status_code=403, detail="Egress has already been requested!"
         )
@@ -150,7 +154,7 @@ async def request_egress(
     # Create a file to mark this egress request as done
     s3_folder = get_s3_folder(session_data)
     s3.put_object(
-        Key=f"{s3_folder}/done",
+        Key=get_done_file(s3_folder),
         ContentType="application/octet-stream",
         Bucket=settings.s3_bucket_name,
     )
