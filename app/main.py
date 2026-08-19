@@ -19,7 +19,7 @@ from fastapi import (
 )
 from app.config import settings
 import boto3
-from botocore.client import Config
+from botocore.client import ClientError, Config
 import jwt
 from datetime import datetime
 
@@ -33,6 +33,20 @@ def get_s3_client():
         config=Config(signature_version="s3v4"),
         region_name=settings.aws_region_name,
     )
+
+
+def s3_file_exists(s3_client, key):
+    try:
+        s3_client.head_object(Bucket=settings.s3_bucket_name, Key=key)
+        return True
+    except s3_client.exceptions.NoSuchKey:
+        return False
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "404":
+            return False
+        raise
+    except Exception:
+        raise
 
 
 app = FastAPI()
@@ -66,7 +80,7 @@ async def create_egress(token=Depends(verify_user_token)):
     """
     Creates a session id for a set of egress files to be uploaded
     """
-    jwt_token = jwt.encode(
+    session_token = jwt.encode(
         {
             "projectId": "5",
             "userId": token.name,
@@ -77,7 +91,7 @@ async def create_egress(token=Depends(verify_user_token)):
         algorithm="HS256",
     )
 
-    return {"token": jwt_token}
+    return {"token": session_token}
 
 
 @router.post("/upload-file")
@@ -85,16 +99,24 @@ async def upload_file(
     file: UploadFile = File(...),
     session_data=Depends(verify_session),
     token=Depends(verify_user_token),
+    s3=Depends(get_s3_client),
 ):
     """
     Uploads an invidual file to an S3 bucket for egress
     """
+
+    # Check if the egress has already been requested
+    s3_key = f"{session_data.projectId}/{session_data.time}/done"
+
+    if s3_file_exists(s3, s3_key):
+        raise HTTPException(
+            status_code=403, detail="Egress has already been requested!"
+        )
+
     try:
         contents = await file.read()
-        file_hash = hashlib.sha256(contents).hexdigest()
         s3_key = f"{session_data.projectId}/{session_data.time}/{file.filename}"
 
-        s3 = get_s3_client()
         s3.put_object(
             Key=s3_key,
             Body=contents,
@@ -114,11 +136,22 @@ async def upload_file(
 
 @router.post("/request-egress")
 async def request_egress(
-    session_id: str = Depends(verify_session), token=Depends(verify_user_token)
+    session_data=Depends(verify_session),
+    token=Depends(verify_user_token),
+    s3=Depends(get_s3_client),
 ):
     """
     Formally requests the egress check
     """
+    # Create a file to mark this egress request as done
+    s3_key = f"{session_data.projectId}/{session_data.time}/done"
+
+    s3.put_object(
+        Key=s3_key,
+        ContentType="application/octet-stream",
+        Bucket=settings.s3_bucket_name,
+    )
+
     jwt_token = jwt.encode(
         {"projectId": "5", "userId": token.name, "bucketId": settings.s3_bucket_name},
         settings.jwt_secret_key,
