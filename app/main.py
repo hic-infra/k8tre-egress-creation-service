@@ -23,13 +23,15 @@ from botocore.client import ClientError, Config
 import jwt
 from datetime import datetime
 
+def create_version_string(session_data: SessionSchema):
+    return session_data.time.strftime("%y%m%d-%H%M%S")
+
 
 def get_s3_folder(session_data: SessionSchema):
-    time_string = session_data.time.strftime("%y%m%d-%H%M%S")
-    return f"{session_data.projectId}/{time_string}"
+    return f"{session_data.projectId}/{create_version_string(session_data)}"
 
 
-def get_done_file(s3_folder):
+def get_done_file(s3_folder: str):
     return f"{s3_folder}/.done"
 
 
@@ -160,7 +162,7 @@ async def request_egress(
     )
 
     jwt_token = jwt.encode(
-        {"projectId": "5", "userId": token.name, "bucketId": settings.s3_bucket_name},
+        {"projectId": "5", "userId": token.name, "bucketId": settings.s3_bucket_name, "version": create_version_string(session_data)},
         settings.jwt_secret_key,
         algorithm="HS256",
     )
