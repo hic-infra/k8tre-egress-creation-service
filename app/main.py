@@ -1,10 +1,10 @@
 from email.message import EmailMessage
-import hashlib
 import smtplib
 import ssl
 
 from pydantic import TypeAdapter
 
+from app.logging import get_logger, setup_logging
 from app.schemas import JupyterHubUser, SessionSchema
 import httpx
 from fastapi import (
@@ -63,6 +63,8 @@ def s3_file_exists(s3_client, key):
 
 app = FastAPI()
 router = APIRouter()
+setup_logging()
+logger = get_logger(__name__)
 
 
 async def verify_user_token(authorization: str = Header(...)):
@@ -103,6 +105,8 @@ async def create_egress(token=Depends(verify_user_token)):
         algorithm="HS256",
     )
 
+    logger.info(f"Session token created for user {token.name}")
+
     return {"token": session_token}
 
 
@@ -135,13 +139,18 @@ async def upload_file(
             Bucket=settings.s3_bucket_name,
         )
 
+        logger.info(
+            f"Uploaded {file.filename} to S3 bucket for session {session_data} for user {token.name}"
+        )
         return {
             "uploaded": file.filename,
             "s3_key": s3_key,
         }
 
     except Exception as e:
-        print(e)
+        logger.error(
+            f"Failed to upload {file.filename} to S3 bucket for session {session_data} for user {token.name}"
+        )
         raise HTTPException(status_code=500, detail="Upload failed")
 
 
@@ -154,13 +163,19 @@ async def request_egress(
     """
     Formally requests the egress check
     """
-    # Create a file to mark this egress request as done
-    s3_folder = get_s3_folder(session_data)
-    s3.put_object(
-        Key=get_done_file(s3_folder),
-        ContentType="application/octet-stream",
-        Bucket=settings.s3_bucket_name,
-    )
+    try:
+        # Create a file to mark this egress request as done
+        s3_folder = get_s3_folder(session_data)
+        s3.put_object(
+            Key=get_done_file(s3_folder),
+            ContentType="application/octet-stream",
+            Bucket=settings.s3_bucket_name,
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to upload .done notification to S3 bucket for session {session_data} for user {token.name}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to finalize egress")
 
     jwt_token = jwt.encode(
         {
@@ -172,23 +187,27 @@ async def request_egress(
         settings.jwt_secret_key,
         algorithm="HS256",
     )
+    try:
+        context = ssl.create_default_context()
+        msg = EmailMessage()
+        msg["to"] = settings.email_to_notify
+        msg["from"] = settings.smtp_sender_email
+        msg["subject"] = f"Egress Request from {token.name}"
+        msg_content = f"An egress has been requested. It can be checked at {settings.egress_checking_fe_url}/{jwt_token}"
+        msg.set_content(msg_content)
+        with smtplib.SMTP_SSL(
+            settings.smtp_server,
+            settings.smtp_port,
+            context=context,
+        ) as server:
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(msg)
+        logger.info(f"Egress request created and user notified")
 
-    context = ssl.create_default_context()
-    msg = EmailMessage()
-    msg["to"] = settings.email_to_notify
-    msg["from"] = settings.smtp_sender_email
-    msg["subject"] = f"Egress Request from {token.name}"
-    msg_content = f"An egress has been requested. It can be checked at {settings.egress_checking_fe_url}/{jwt_token}"
-    msg.set_content(msg_content)
-    with smtplib.SMTP_SSL(
-        settings.smtp_server,
-        settings.smtp_port,
-        context=context,
-    ) as server:
-        server.login(settings.smtp_username, settings.smtp_password)
-        server.send_message(msg)
-
-    return {"status": "ok", "token": jwt_token}
+        return {"status": "ok", "token": jwt_token}
+    except Exception as e:
+        logger.error(f"Failed to send egress notification: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send email")
 
 
 app.include_router(router)
