@@ -19,9 +19,12 @@ The workflow is:
     --upload-file
 -request-egress
 
+Files are uploaded into the S3 bucket as
+/{project_id}/{session-id}/{file}.
 Once request-egress has been called no more files can be uploaded.
 This is enforced by request-egress creating a .done file in the S3 "folder"
-- upload-file checks for this
+upload-file checks for this.
+If request-egress is not called on a session id then the bucket is still editable
 
 ## Setup
 ### Requirements
@@ -30,7 +33,7 @@ extension installed. It also needs either AWS S3 access or a compatible alternat
 (e.g. SeaweedFS) 
 
 ### To run
-
+#### Natively
 1. Create a virtualenv and activate it
 2. Install requirements.txt
 ```
@@ -41,6 +44,11 @@ pip install -r requirements.txt
 ```
 uvicorn app.main:app --reload
 ```
+
+#### With docker
+1. Copy .env.example to .env and set values appropriately
+2. ```docker build -t hic-egress-creation-service .```
+3. ```docker run -p 8080:80 hic-egress-creation-service```
 
 ### To run tests
 ```
