@@ -2,7 +2,7 @@ from email.message import EmailMessage
 import smtplib
 import ssl
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from app.logging import get_logger, setup_logging
 from app.schemas import JupyterHubUser, SessionSchema
@@ -68,13 +68,42 @@ logger = get_logger(__name__)
 
 
 async def verify_user_token(authorization: str = Header(...)):
-    token = authorization.removeprefix("token ").removeprefix("Bearer ")
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            settings.jupyterhub_api_url,
-            headers={"Authorization": f"token {token}"},
-        )
-    return TypeAdapter(JupyterHubUser).validate_json(response.content)
+    token = authorization.removeprefix("token ").removeprefix("Bearer ").strip()
+
+    if not token:
+        logger.warning("Empty token provided in authorization header")
+        raise HTTPException(status_code=401, detail="Empty token")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            logger.debug(f"Verifying token against {settings.jupyterhub_api_url}")
+
+            response = await client.get(
+                settings.jupyterhub_api_url,
+                headers={"Authorization": f"token {token}"},
+            )
+
+            if response.status_code == 401:
+                logger.warning("JupyterHub rejected token")
+                raise HTTPException(status_code=401, detail="Invalid token")
+
+            if response.status_code != 200:
+                logger.error(
+                    f"JupyterHub returned {response.status_code}: {response.text}"
+                )
+                raise HTTPException(status_code=500, detail="Auth service error")
+
+            user = TypeAdapter(JupyterHubUser).validate_json(response.content)
+            logger.info(f"Token verified for user: {user.name}")
+            return user
+
+    except httpx.RequestError as e:
+        logger.error(f"JupyterHub request failed: {e}")
+        raise HTTPException(status_code=503, detail="Auth service unavailable")
+
+    except ValidationError as e:
+        logger.error(f"Failed to parse JupyterHub response: {e}")
+        raise HTTPException(status_code=500, detail="Invalid auth response")
 
 
 async def verify_session(session_id: str = Form(...)):
