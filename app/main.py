@@ -98,11 +98,11 @@ async def verify_user_token(authorization: str = Header(...)):
             return user
 
     except httpx.RequestError as e:
-        logger.error(f"JupyterHub request failed: {e}")
+        logger.error(f"JupyterHub request failed: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="Auth service unavailable")
 
     except ValidationError as e:
-        logger.error(f"Failed to parse JupyterHub response: {e}")
+        logger.error(f"Failed to parse JupyterHub response: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Invalid auth response")
 
 
@@ -178,7 +178,7 @@ async def upload_file(
 
     except Exception as e:
         logger.error(
-            f"Failed to upload {file.filename} to S3 bucket for session {session_data} for user {token.name}"
+            f"Failed to upload {file.filename} to S3 bucket for session {session_data} for user {token.name} with exception {e}", exc_info=True
         )
         raise HTTPException(status_code=500, detail="Upload failed")
 
@@ -202,7 +202,7 @@ async def request_egress(
         )
     except Exception as e:
         logger.error(
-            f"Failed to upload .done notification to S3 bucket for session {session_data} for user {token.name}"
+            f"Failed to upload .done notification to S3 bucket for session {session_data} for user {token.name} with exception {e}", exc_info=True
         )
         raise HTTPException(status_code=500, detail="Failed to finalize egress")
 
@@ -235,7 +235,7 @@ async def request_egress(
 
         return {"status": "ok", "token": jwt_token}
     except Exception as e:
-        logger.error(f"Failed to send egress notification: {type(e).__name__}: {e}")
+        logger.error(f"Failed to send egress notification: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to send email")
 
 
